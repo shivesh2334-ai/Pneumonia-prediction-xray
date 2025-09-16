@@ -4,8 +4,7 @@ import os
 import torch
 import streamlit as st
 from monai.networks.nets import DenseNet
-from monai.transforms import LoadImage, AddChannel, ScaleIntensity, EnsureType
-
+from monai.transforms import Compose, ScaleIntensity, EnsureChannelFirst
 # Detect device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -45,4 +44,8 @@ else:
     st.stop()
 
 # Define transforms for inference (single image, grayscale)
-transforms = [LoadImage(image_only=True), AddChannel(), ScaleIntensity(), EnsureType()]
+
+transform = Compose([
+    ScaleIntensity(),
+    EnsureChannelFirst(),
+])
