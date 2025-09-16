@@ -1,61 +1,48 @@
-import streamlit as st
+
+
+import os
 import torch
-import numpy as np
-from monai.transforms import Compose, ScaleIntensity, EnsureChannelFirst, ToTensor, AddChannel
+import streamlit as st
 from monai.networks.nets import DenseNet
-from PIL import Image
+from monai.transforms import LoadImage, AddChannel, ScaleIntensity, EnsureType
 
-
-# Set device
+# Detect device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load the trained model
+# Initialize model
 model = DenseNet(spatial_dims=2, in_channels=1, out_channels=2).to(device)
-model.load_state_dict(torch.load("best_metric_model.pth", map_location=device))
-model.eval()
+
+# Flexible model path
+MODEL_PATH = os.getenv("MODEL_PATH", "best_metric_model.pth")
+
+# Check if model file exists
+if not os.path.exists(MODEL_PATH):
+    st.warning(
+        f"⚠️ Model file not found at '{MODEL_PATH}'. "
+        "Please upload your trained model file (.pth)."
+    )
+    uploaded_file = st.file_uploader("Upload your model file (.pth)", type=["pth"])
+
+    if uploaded_file is not None:
+        # Save uploaded file
+        MODEL_PATH = os.path.join("models", uploaded_file.name)
+        os.makedirs("models", exist_ok=True)
+        with open(MODEL_PATH, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success(f"✅ Model uploaded and saved as: {MODEL_PATH}")
+
+# Try loading the model
+if os.path.exists(MODEL_PATH):
+    try:
+        model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+        model.eval()
+        st.success(f"✅ Model loaded successfully from: {MODEL_PATH}")
+    except Exception as e:
+        st.error(f"❌ Error loading model weights: {e}")
+        st.stop()
+else:
+    st.error("❌ No model available. Please upload `best_metric_model.pth` to proceed.")
+    st.stop()
 
 # Define transforms for inference (single image, grayscale)
-val_transforms = Compose([
-    ScaleIntensity(),   # scale pixel values to [0, 1]
-    AddChannel(),       # add channel dimension for grayscale
-    ToTensor()          # convert to torch tensor
-])
-
-class_names = ['Normal', 'Pneumonia']
-
-st.title("Pneumonia Detection from Chest X-ray")
-st.write("Upload a chest X-ray image to classify it as Normal or Pneumonia.")
-
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("L") # Convert to grayscale
-
-    try:
-        # Convert image to numpy array
-        np_image = np.array(image).astype(np.float32)
-        # Apply transforms
-        input_tensor = val_transforms(np_image)
-        input_tensor = input_tensor.unsqueeze(0).to(device)  # add batch dim
-
-        # Get prediction
-        with torch.no_grad():
-            output = model(input_tensor)
-            probabilities = torch.softmax(output, dim=1)[0]
-
-        predicted_class_idx = torch.argmax(probabilities).item()
-        confidence_normal = probabilities[0].item()
-        confidence_pneumonia = probabilities[1].item()
-        predicted_class_name = class_names[predicted_class_idx]
-
-        st.image(image, caption="Uploaded Image", use_column_width=True)
-        st.write(f"Prediction: **{predicted_class_name}**")
-        st.write(f"Confidence (Normal): {confidence_normal:.4f}")
-        st.write(f"Confidence (Pneumonia): {confidence_pneumonia:.4f}")
-
-        if max(confidence_normal, confidence_pneumonia) < 0.7:
-            st.warning("Prediction confidence is low. Please use high-quality images.")
-
-    except Exception as e:
-        st.error(f"Error processing image: {e}")
-        st.text(f"{e}")
+transforms = [LoadImage(image_only=True), AddChannel(), ScaleIntensity(), EnsureType()]
