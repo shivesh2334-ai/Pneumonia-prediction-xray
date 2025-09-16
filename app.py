@@ -1,7 +1,7 @@
 import streamlit as st
 import torch
 import numpy as np
-from monai.transforms import Compose, ScaleIntensity, AddChannel, ToTensor
+from from monai.transforms import Compose, ScaleIntensity, EnsureChannelFirst, ToTensor
 from monai.networks.nets import DenseNet
 from PIL import Image
 
